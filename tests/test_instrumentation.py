@@ -10,14 +10,15 @@ from src.instrumentation import (
 from src.platforms import BraintrustPlatform, LangSmithPlatform
 
 
-def test_create_llm_span_genai_attributes():
+@pytest.mark.asyncio
+async def test_create_llm_span_genai_attributes():
     """LLM spans have GenAI semantic convention attributes"""
     tracer = Mock()
     span = MagicMock()
     tracer.start_as_current_span.return_value.__enter__ = Mock(return_value=span)
     tracer.start_as_current_span.return_value.__exit__ = Mock()
 
-    create_llm_span(
+    await create_llm_span(
         tracer=tracer,
         name="test_llm",
         tokens_in=100,
@@ -37,14 +38,15 @@ def test_create_llm_span_genai_attributes():
     assert attr_dict["gen_ai.operation.name"] == "chat"
 
 
-def test_create_tool_span_attributes():
+@pytest.mark.asyncio
+async def test_create_tool_span_attributes():
     """Tool spans have correct tool attributes"""
     tracer = Mock()
     span = MagicMock()
     tracer.start_as_current_span.return_value.__enter__ = Mock(return_value=span)
     tracer.start_as_current_span.return_value.__exit__ = Mock()
 
-    create_tool_span(
+    await create_tool_span(
         tracer=tracer,
         name="search_flights",
         tool_result={"flights": []},
