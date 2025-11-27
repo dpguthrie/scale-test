@@ -1,0 +1,13 @@
+# OpenTelemetry core
+opentelemetry-api==1.25.0
+opentelemetry-sdk==1.25.0
+opentelemetry-exporter-otlp-proto-http==1.25.0
+
+# Async and utilities
+aiohttp==3.9.5
+python-dotenv==1.0.1
+numpy==1.26.4
+
+# Testing
+pytest==8.2.0
+pytest-asyncio==0.23.7
