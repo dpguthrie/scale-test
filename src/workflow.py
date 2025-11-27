@@ -58,7 +58,7 @@ class LLMStep(WorkflowStep):
         )
 
         # Create span with platform-specific attributes
-        create_llm_span(
+        await create_llm_span(
             tracer=tracer,
             name=self.name,
             tokens_in=self.tokens_in,
@@ -97,7 +97,7 @@ class ToolStep(WorkflowStep):
         )
 
         # Create tool span
-        create_tool_span(
+        await create_tool_span(
             tracer=tracer,
             name=self.name,
             tool_result=tool_result,

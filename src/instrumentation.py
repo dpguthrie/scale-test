@@ -1,7 +1,7 @@
 """OpenTelemetry instrumentation for creating realistic agent traces"""
 
+import asyncio
 import json
-import time
 from typing import Any, Dict, List, Optional
 from opentelemetry import trace
 from opentelemetry.trace import Span
@@ -9,7 +9,7 @@ from opentelemetry.trace import Span
 from src.platforms import Platform, BraintrustPlatform, LangSmithPlatform
 
 
-def create_llm_span(
+async def create_llm_span(
     tracer: trace.Tracer,
     name: str,
     tokens_in: int,
@@ -40,7 +40,7 @@ def create_llm_span(
     """
     with tracer.start_as_current_span(name) as span:
         # Simulate LLM latency
-        time.sleep(latency_ms / 1000.0)
+        await asyncio.sleep(latency_ms / 1000.0)
 
         # GenAI semantic conventions
         span.set_attribute("gen_ai.system", "anthropic")
@@ -74,7 +74,7 @@ def create_llm_span(
         return span
 
 
-def create_tool_span(
+async def create_tool_span(
     tracer: trace.Tracer,
     name: str,
     tool_result: Dict[str, Any],
@@ -95,7 +95,7 @@ def create_tool_span(
     """
     with tracer.start_as_current_span(name) as span:
         # Simulate tool latency
-        time.sleep(latency_ms / 1000.0)
+        await asyncio.sleep(latency_ms / 1000.0)
 
         # GenAI tool attributes
         span.set_attribute("gen_ai.tool.name", name)
