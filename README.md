@@ -39,7 +39,7 @@ All configuration is via environment variables. See `.env.example` for full opti
 ```bash
 OTEL_PLATFORM=braintrust
 OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
-OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer sk-..., x-bt-parent=project_id:..."
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer sk-..., x-bt-parent=project_name:scale-test"
 SCALE_TEST_CONCURRENCY=50
 SCALE_TEST_DURATION=300
 SCALE_TEST_RATE_LIMIT=50
@@ -50,7 +50,7 @@ SCALE_TEST_RATE_LIMIT=50
 ```bash
 OTEL_PLATFORM=langsmith
 OTEL_EXPORTER_OTLP_ENDPOINT=https://api.smith.langchain.com/otel
-OTEL_EXPORTER_OTLP_HEADERS="x-api-key=lsv2_..., Langsmith-Project=scale-test"
+OTEL_EXPORTER_OTLP_HEADERS="x-api-key=lsv2_...,Langsmith-Project=scale-test"
 SCALE_TEST_CONCURRENCY=50
 SCALE_TEST_DURATION=300
 ```

@@ -46,10 +46,17 @@ def load_config_from_env() -> dict:
         })
 
     elif platform == "langsmith":
-        # LangSmith uses LANGSMITH_* environment variables
-        api_key = os.getenv("LANGSMITH_API_KEY", "")
-        # LangSmith project is optional, defaults to "default" if not specified
-        project_name = os.getenv("LANGSMITH_PROJECT", "default")
+        # Parse headers for API key and project
+        headers = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+        api_key = ""
+        project_name = ""
+
+        for part in headers.split(","):
+            part = part.strip()
+            if "x-api-key" in part:
+                api_key = part.split("=", 1)[1].strip()
+            elif "Langsmith-Project" in part:
+                project_name = part.split("=", 1)[1].strip()
 
         platform_config.update({
             "api_key": api_key,
