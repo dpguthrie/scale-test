@@ -20,8 +20,8 @@ Three-layer design:
 ## Setup
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies with uv
+uv sync
 
 # Copy example environment file
 cp .env.example .env
@@ -59,7 +59,7 @@ SCALE_TEST_DURATION=300
 
 ```bash
 # Run scale test
-python scripts/run_scale_test.py
+uv run python scripts/run_scale_test.py
 ```
 
 ## Built-in Scenarios
@@ -98,13 +98,13 @@ python scripts/run_scale_test.py
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run specific test file
-pytest tests/test_scenarios.py -v
+uv run pytest tests/test_scenarios.py -v
 
 # Run with output
-pytest -v -s
+uv run pytest -v -s
 ```
 
 ## Design
