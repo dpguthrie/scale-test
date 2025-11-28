@@ -102,15 +102,9 @@ class ScaleTestExecutor:
             exporter = OTLPSpanExporter(
                 endpoint=self.platform.endpoint,
                 headers=self.platform.get_headers(),
-                timeout=60  # 60 second timeout for large payloads
+                timeout=120  # 120 second timeout for large payloads
             )
-            # Use smaller batch sizes to avoid timeouts with large traces
-            processor = BatchSpanProcessor(
-                exporter,
-                max_export_batch_size=32,  # Smaller batches (default is 512)
-                max_queue_size=2048,
-                schedule_delay_millis=5000  # Export every 5 seconds
-            )
+            processor = BatchSpanProcessor(exporter)
             provider.add_span_processor(processor)
 
         trace.set_tracer_provider(provider)
