@@ -88,10 +88,10 @@ uv run python scripts/run_scale_test.py
    Avg per request: 747 KB
 
 📈 Query Mix Breakdown:
-   simple_query: 6000 traces, P50=800ms, 35KB avg (~5K tokens, 5 spans)
-   single_service_search: 4500 traces, P50=2400ms, 270KB avg (~18K tokens, 12 spans)
-   delegated_booking: 3000 traces, P50=4500ms, 470KB avg (~40K tokens, 25 spans)
-   multi_service_complex: 1500 traces, P50=12000ms, 2.3MB avg (~185K tokens, 80 spans)
+   simple_query: 6000 traces, P50=30ms, 35KB avg (~5K tokens, 5 spans)
+   single_service_search: 4500 traces, P50=250ms, 270KB avg (~18K tokens, 12 spans)
+   delegated_booking: 3000 traces, P50=1200ms, 470KB avg (~40K tokens, 25 spans)
+   multi_service_complex: 1500 traces, P50=4500ms, 2.3MB avg (~185K tokens, 80 spans)
 ```
 
 ## Code Structure
