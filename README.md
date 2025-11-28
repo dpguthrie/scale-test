@@ -94,6 +94,69 @@ uv run python scripts/run_scale_test.py
    multi_service_complex: 1500 traces, P50=12000ms, 2.3MB avg (~185K tokens, 80 spans)
 ```
 
+## Code Structure
+
+The framework is organized in three layers:
+
+### Core Framework (`src/`)
+
+- **`workflow.py`**: Workflow step definitions
+  - Abstract `WorkflowStep` base class
+  - Concrete steps: `LLMStep`, `ToolStep`, `DelegationStep`, `RoutingStep`, `ParallelStep`
+  - Each step has an async `execute()` method that creates OTEL spans
+
+- **`scenarios.py`**: Pre-defined trace scenarios
+  - `TraceScenario` dataclass with workflow steps, expected span counts, and sizes
+  - 4 built-in scenarios: `simple_query`, `single_service_search`, `delegated_booking`, `multi_service_complex`
+  - Scenario registry and `get_scenario()` factory function
+
+- **`instrumentation.py`**: OpenTelemetry span creation
+  - `create_llm_span()`: LLM calls with GenAI semantic conventions
+  - `create_tool_span()`: Tool invocations with inputs/outputs
+  - `create_agent_span()`: Agent delegation spans
+  - `set_platform_attributes()`: Platform-specific attributes (Braintrust, LangSmith)
+
+- **`platforms.py`**: Platform configurations
+  - Abstract `Platform` base class
+  - Platform implementations: `BraintrustPlatform`, `LangSmithPlatform`, `OTLPPlatform`, `ConsolePlatform`
+  - Each platform configures endpoint URLs, headers, and span attributes
+
+- **`payloads.py`**: Realistic payload generation
+  - `generate_flight_search_results()`: Flight search data
+  - `generate_hotel_search_results()`: Hotel search data
+  - `generate_llm_messages()`: LLM conversation messages
+  - `generate_tool_result()`: Generic tool outputs
+
+- **`metrics.py`**: Metrics collection and reporting
+  - `MetricsCollector`: Tracks latencies, throughput, data volumes
+  - `ScenarioMetrics`: Per-scenario breakdown
+  - Calculates percentiles (P50, P95, P99) and formats reports
+
+- **`executor.py`**: Async workload execution
+  - `ScaleTestExecutor`: Main test runner with worker pool
+  - `TokenBucketRateLimiter`: Smooth request rate limiting
+  - Runs scenarios for specified duration with configured concurrency
+
+### Entry Point (`scripts/`)
+
+- **`run_scale_test.py`**: CLI entry point
+  - Loads configuration from environment variables
+  - Parses `OTEL_PLATFORM`, `SCALE_TEST_*` variables
+  - Creates and runs `ScaleTestExecutor`
+  - Prints formatted metrics report
+
+### Tests (`tests/`)
+
+- **`test_workflow.py`**: Workflow step creation tests
+- **`test_scenarios.py`**: Scenario definition tests
+- **`test_instrumentation.py`**: OTEL span creation tests
+- **`test_platforms.py`**: Platform configuration tests
+- **`test_payloads.py`**: Payload generation tests
+- **`test_metrics.py`**: Metrics collection tests
+- **`test_executor.py`**: Executor and rate limiter tests
+- **`test_workflow_execution.py`**: End-to-end workflow execution tests
+- **`test_integration.py`**: Full integration tests
+
 ## Development
 
 ```bash
