@@ -64,10 +64,10 @@ uv run python scripts/run_scale_test.py
 
 ## Built-in Scenarios
 
-1. **simple_query** (40% default): Simple questions (5-10 spans, ~20KB)
-2. **single_service_search** (30% default): Service searches (10-20 spans, ~50KB)
-3. **delegated_booking** (20% default): Specialist delegation (30-50 spans, ~150KB)
-4. **multi_service_complex** (10% default): Multi-service workflows (80-150 spans, ~250KB)
+1. **simple_query** (40% default): Simple questions (~5K tokens, 5 spans, ~35KB)
+2. **single_service_search** (30% default): Service searches (~18K tokens, 12 spans, ~270KB)
+3. **delegated_booking** (20% default): Specialist delegation (~40K tokens, 25 spans, ~470KB)
+4. **multi_service_complex** (10% default): Multi-service workflows (~185K tokens, 80 spans, ~2.3MB)
 
 ## Example Output
 
@@ -84,14 +84,14 @@ uv run python scripts/run_scale_test.py
    P99: 250ms
 
 📦 Data Volume:
-   Total: 2.25 GB
-   Avg per request: 150 KB
+   Total: 11.2 GB
+   Avg per request: 747 KB
 
 📈 Query Mix Breakdown:
-   simple_query: 6000 traces, P50=20ms, 20KB avg
-   single_service_search: 4500 traces, P50=35ms, 50KB avg
-   delegated_booking: 3000 traces, P50=80ms, 150KB avg
-   multi_service_complex: 1500 traces, P50=180ms, 250KB avg
+   simple_query: 6000 traces, P50=800ms, 35KB avg (~5K tokens, 5 spans)
+   single_service_search: 4500 traces, P50=2400ms, 270KB avg (~18K tokens, 12 spans)
+   delegated_booking: 3000 traces, P50=4500ms, 470KB avg (~40K tokens, 25 spans)
+   multi_service_complex: 1500 traces, P50=12000ms, 2.3MB avg (~185K tokens, 80 spans)
 ```
 
 ## Development

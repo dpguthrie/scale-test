@@ -58,6 +58,6 @@ async def test_executor_runs_for_duration():
     metrics = await executor.run(duration_seconds=2)
     elapsed = asyncio.get_event_loop().time() - start
 
-    # Should complete in approximately 2 seconds
-    assert 1.5 <= elapsed <= 3.0
+    # Should complete in approximately 2 seconds (with tolerance for realistic latencies)
+    assert 1.5 <= elapsed <= 4.0
     assert metrics["total_requests"] > 0

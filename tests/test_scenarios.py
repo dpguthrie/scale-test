@@ -13,7 +13,7 @@ def test_simple_query_scenario():
     assert SIMPLE_QUERY.name == "simple_query"
     assert len(SIMPLE_QUERY.workflow_steps) >= 3
     assert SIMPLE_QUERY.expected_span_count >= 5
-    assert SIMPLE_QUERY.expected_size_kb == 20
+    assert SIMPLE_QUERY.expected_size_kb == 35
 
 
 def test_delegated_booking_scenario():
@@ -25,7 +25,7 @@ def test_delegated_booking_scenario():
         for step in DELEGATED_BOOKING.workflow_steps
     )
     assert has_delegation
-    assert DELEGATED_BOOKING.expected_span_count >= 30
+    assert DELEGATED_BOOKING.expected_span_count >= 20
 
 
 def test_get_scenario_by_name():
