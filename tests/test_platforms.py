@@ -12,7 +12,7 @@ def test_braintrust_platform_configuration():
     """Braintrust platform has correct endpoint and headers"""
     platform = BraintrustPlatform(
         api_key="test-key",
-        project_id="test-project"
+        project_name="test-project"
     )
     assert platform.endpoint == "https://api.braintrust.dev/otel/v1/traces"
     headers = platform.get_headers()
@@ -53,7 +53,7 @@ def test_get_platform_by_name():
     config = {
         "platform": "braintrust",
         "api_key": "test",
-        "project_id": "proj"
+        "project_name": "proj"
     }
     platform = get_platform(config)
     assert isinstance(platform, BraintrustPlatform)

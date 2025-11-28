@@ -37,7 +37,7 @@ class BraintrustPlatform(Platform):
     - BatchSpanProcessor recommended for scale
     """
     api_key: str
-    project_id: str
+    project_name: str
     endpoint_url: str = "https://api.braintrust.dev/otel/v1/traces"
 
     @property
@@ -47,13 +47,13 @@ class BraintrustPlatform(Platform):
     def get_headers(self) -> Dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
-            "x-bt-parent": f"project_id:{self.project_id}"
+            "x-bt-parent": f"project_name:{self.project_name}"
         }
 
     def get_span_attributes(self) -> Dict[str, str]:
         """Braintrust-specific attributes for direct field mapping"""
         return {
-            "braintrust.project_id": self.project_id,
+            "braintrust.project_name": self.project_name,
         }
 
 
@@ -141,7 +141,7 @@ def get_platform(config: Dict) -> Platform:
     if platform_type == "braintrust":
         return BraintrustPlatform(
             api_key=config["api_key"],
-            project_id=config.get("project_id", config.get("project_name"))
+            project_name=config["project_name"]
         )
     elif platform_type == "langsmith":
         return LangSmithPlatform(

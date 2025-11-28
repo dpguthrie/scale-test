@@ -63,14 +63,14 @@ async def test_create_tool_span_attributes():
 def test_platform_specific_attributes_braintrust():
     """Braintrust platform adds braintrust.* attributes"""
     span = MagicMock()
-    platform = BraintrustPlatform(api_key="test", project_id="proj")
+    platform = BraintrustPlatform(api_key="test", project_name="proj")
 
     set_platform_attributes(span, platform, span_type="llm", data={})
 
     calls = span.set_attribute.call_args_list
     attr_dict = {call[0][0]: call[0][1] for call in calls}
 
-    assert "braintrust.project_id" in attr_dict
+    assert "braintrust.project_name" in attr_dict
 
 
 def test_platform_specific_attributes_langsmith():
