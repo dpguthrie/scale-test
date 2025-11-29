@@ -66,19 +66,33 @@ async def create_llm_span(
         # Messages - use indexed format for compatibility
         for i, msg in enumerate(messages):
             span.set_attribute(f"gen_ai.prompt.{i}.role", msg["role"])
-            span.set_attribute(f"gen_ai.prompt.{i}.content", msg["content"])
+            # Content can be string or array (Anthropic format)
+            content = msg["content"]
+            if isinstance(content, list):
+                # Anthropic multi-part content - serialize as JSON
+                span.set_attribute(f"gen_ai.prompt.{i}.content", json.dumps(content))
+            else:
+                span.set_attribute(f"gen_ai.prompt.{i}.content", content)
 
         # Also set completion attributes for output
         # Find assistant messages for output
         assistant_messages = [msg for msg in messages if msg.get("role") == "assistant"]
         if assistant_messages:
             # Set single completion string (most recent assistant message)
-            span.set_attribute("gen_ai.completion", assistant_messages[-1]["content"])
+            last_content = assistant_messages[-1]["content"]
+            if isinstance(last_content, list):
+                span.set_attribute("gen_ai.completion", json.dumps(last_content))
+            else:
+                span.set_attribute("gen_ai.completion", last_content)
 
             # Set indexed completion format for all assistant messages
             for i, msg in enumerate(assistant_messages):
                 span.set_attribute(f"gen_ai.completion.{i}.role", "assistant")
-                span.set_attribute(f"gen_ai.completion.{i}.content", msg["content"])
+                content = msg["content"]
+                if isinstance(content, list):
+                    span.set_attribute(f"gen_ai.completion.{i}.content", json.dumps(content))
+                else:
+                    span.set_attribute(f"gen_ai.completion.{i}.content", content)
 
         # Add realistic metadata for filtering/analytics
         llm_metadata = generate_llm_metadata(model)
@@ -86,6 +100,23 @@ async def create_llm_span(
 
         # Platform-specific attributes
         if platform:
+            from src.platforms import BraintrustPlatform, OTLPPlatform
+
+            # Set Braintrust attributes directly for Braintrust or OTLP mode
+            # (OTLP may forward to Braintrust)
+            if isinstance(platform, (BraintrustPlatform, OTLPPlatform)):
+                # Set span type for filtering
+                span.set_attribute("braintrust.span_attributes.type", "llm")
+
+                # Parse messages into input (user) and output (assistant)
+                input_msgs = [msg for msg in messages if msg.get("role") in ("user", "system")]
+                output_msgs = [msg for msg in messages if msg.get("role") == "assistant"]
+
+                # Set as JSON that Braintrust will parse
+                span.set_attribute("braintrust.input_json", json.dumps(input_msgs if input_msgs else messages, separators=(',', ':')))
+                span.set_attribute("braintrust.output_json", json.dumps(output_msgs if output_msgs else messages[-1:], separators=(',', ':')))
+
+            # Always set other platform attributes too (for LangSmith, etc.)
             set_platform_attributes(
                 span,
                 platform,
@@ -142,6 +173,19 @@ async def create_tool_span(
 
         # Platform-specific attributes
         if platform:
+            from src.platforms import BraintrustPlatform, OTLPPlatform
+
+            # Set Braintrust attributes directly for Braintrust or OTLP mode
+            # (OTLP may forward to Braintrust)
+            if isinstance(platform, (BraintrustPlatform, OTLPPlatform)):
+                # Set span type for filtering
+                span.set_attribute("braintrust.span_attributes.type", "tool")
+
+                # Set input as plain text, output as JSON object
+                span.set_attribute("braintrust.input", tool_input)
+                span.set_attribute("braintrust.output_json", json.dumps(tool_result, separators=(',', ':')))
+
+            # Always set other platform attributes too (for LangSmith, etc.)
             set_platform_attributes(
                 span,
                 platform,
@@ -220,6 +264,8 @@ def set_platform_attributes(
         span_type: Type of span (llm, tool, agent)
         data: Span data for platform-specific formatting
     """
+    from src.platforms import BraintrustPlatform, LangSmithPlatform, OTLPPlatform
+
     # Add platform base attributes
     for key, value in platform.get_span_attributes().items():
         span.set_attribute(key, value)
@@ -227,6 +273,11 @@ def set_platform_attributes(
     # Platform-specific handling
     if isinstance(platform, BraintrustPlatform):
         _set_braintrust_attributes(span, span_type, data)
+    elif isinstance(platform, OTLPPlatform):
+        # OTLP may forward to Braintrust, so set those attributes
+        _set_braintrust_attributes(span, span_type, data)
+        # Also set LangSmith attributes for multi-platform support
+        _set_langsmith_attributes(span, span_type, data)
     elif isinstance(platform, LangSmithPlatform):
         _set_langsmith_attributes(span, span_type, data)
 
@@ -239,6 +290,9 @@ def _set_braintrust_attributes(span: Span, span_type: str, data: Dict[str, Any])
         span_type: Type of span
         data: Span data
     """
+    # CRITICAL: Set span type for thread view filtering
+    span.set_attribute("braintrust.span_attributes.type", span_type)
+
     if span_type == "llm" and "messages" in data:
         # Use braintrust namespace for direct field mapping
         # Input: all user/system messages
@@ -246,18 +300,22 @@ def _set_braintrust_attributes(span: Span, span_type: str, data: Dict[str, Any])
         # Output: assistant messages
         output_msgs = [msg for msg in data["messages"] if msg.get("role") == "assistant"]
 
-        span.set_attribute("braintrust.input_json", json.dumps(input_msgs if input_msgs else data["messages"]))
-        span.set_attribute("braintrust.output_json", json.dumps(output_msgs if output_msgs else data["messages"][-1:]))
+        # Braintrust parses attributes with _json suffix into actual objects/arrays
+        # Use compact JSON without extra whitespace
+        span.set_attribute("braintrust.input_json", json.dumps(input_msgs if input_msgs else data["messages"], separators=(',', ':')))
+        span.set_attribute("braintrust.output_json", json.dumps(output_msgs if output_msgs else data["messages"][-1:], separators=(',', ':')))
         span.set_attribute("braintrust.metadata", json.dumps({
             "model": data.get("model", "unknown")
-        }))
+        }, separators=(',', ':')))
 
     elif span_type == "tool":
         # For tools, use input/output from data
+        # Tool results should be JSON objects, use _json suffix for parsing
         if "input" in data:
             span.set_attribute("braintrust.input", data["input"])
         if "output" in data:
-            span.set_attribute("braintrust.output", data["output"])
+            # Output is the full tool result dict - serialize it for Braintrust to parse
+            span.set_attribute("braintrust.output_json", json.dumps(data["output"], separators=(',', ':')))
 
 
 def _set_langsmith_attributes(span: Span, span_type: str, data: Dict[str, Any]):

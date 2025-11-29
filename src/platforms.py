@@ -115,8 +115,9 @@ class BraintrustPlatform(Platform):
     def get_attribute_mapping(self) -> AttributeMapping:
         """Braintrust attribute mapping configuration"""
         mapping = AttributeMapping()
-        mapping.input_key = "braintrust.input"
-        mapping.output_key = "braintrust.output"
+        # Use _json suffix so Braintrust parses the JSON string into objects/arrays
+        mapping.input_key = "braintrust.input_json"
+        mapping.output_key = "braintrust.output_json"
         mapping.span_type_key = "braintrust.span_attributes.type"
         mapping.metadata_prefix = None  # Braintrust uses direct attributes, no prefix needed
         mapping.span_kind_key = None  # Not used by Braintrust
