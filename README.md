@@ -6,10 +6,8 @@ Scale testing framework for AI observability platforms using realistic OpenTelem
 
 - **Framework-free**: Pure Python + OTEL SDK, no agent frameworks
 - **Multi-platform**: Braintrust, LangSmith, OTLP-compatible backends
-- **Realistic traces**: Inspired by real travel agent workloads (100-250KB, 50-150 spans, 5-8 levels deep)
 - **Configurable scale**: 10-100 req/sec with async execution
 - **Production-ready**: OpenTelemetry Collector support for high-throughput testing
-- **Comprehensive metrics**: Latency percentiles, throughput, data volume, per-scenario breakdowns
 
 ## Quick Start
 
@@ -61,7 +59,6 @@ uv run python scripts/run_scale_test.py
 
 **Limitations:**
 - ❌ Script hangs 5-10 minutes on shutdown waiting for spans to export
-- ❌ Gets rate-limited by platforms at high throughput
 - ❌ Timeouts on large tests (500+ traces)
 
 ---
@@ -153,8 +150,6 @@ docker-compose logs -f otel-collector
 - Docker Compose reads: `BRAINTRUST_API_KEY`, `LANGSMITH_API_KEY` (via `env_file: .env`)
 - Collector reads: API keys passed from Docker Compose as environment variables
 
-**No need to export variables manually** - just edit `.env` and restart services.
-
 ### Key Configuration Variables
 
 #### Deployment Mode
@@ -206,8 +201,6 @@ OTEL_BSP_MAX_QUEUE_SIZE=8192         # Large queue for high concurrency
 OTEL_SKIP_SHUTDOWN=false  # Wait for spans to export (direct mode)
 OTEL_SKIP_SHUTDOWN=true   # Exit immediately (recommended for collector mode)
 ```
-
-**Smart Detection:** When `OTEL_SKIP_SHUTDOWN=true`, the framework automatically detects if you're using a collector (localhost endpoint) and shows an INFO message instead of a warning, since spans are safely buffered in the collector.
 
 ### Understanding the Queue
 

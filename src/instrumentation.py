@@ -84,6 +84,11 @@ async def create_llm_span(
         llm_metadata = generate_llm_metadata(model)
         add_metadata_to_span(span, llm_metadata)
 
+        # Add LangSmith metadata prefix for metadata display
+        for key, value in llm_metadata.items():
+            if isinstance(value, (bool, int, float, str)):
+                span.set_attribute(f"langsmith.metadata.{key}", value)
+
         # Platform-specific attributes
         if platform:
             set_platform_attributes(
@@ -140,6 +145,11 @@ async def create_tool_span(
         tool_metadata = generate_tool_metadata(name)
         add_metadata_to_span(span, tool_metadata)
 
+        # Add LangSmith metadata prefix for metadata display
+        for key, value in tool_metadata.items():
+            if isinstance(value, (bool, int, float, str)):
+                span.set_attribute(f"langsmith.metadata.{key}", value)
+
         # Platform-specific attributes
         if platform:
             set_platform_attributes(
@@ -179,6 +189,11 @@ def create_agent_span(
         # Add realistic metadata for filtering/analytics
         agent_metadata = generate_agent_metadata(agent_type)
         add_metadata_to_span(span, agent_metadata)
+
+        # Add LangSmith metadata prefix for metadata display
+        for key, value in agent_metadata.items():
+            if isinstance(value, (bool, int, float, str)):
+                span.set_attribute(f"langsmith.metadata.{key}", value)
 
         # Platform-specific attributes
         if platform:
@@ -275,3 +290,21 @@ def _set_langsmith_attributes(span: Span, span_type: str, data: Dict[str, Any]):
         "agent": "chain"
     }
     span.set_attribute("langsmith.span.kind", span_kind_map.get(span_type, "chain"))
+
+    # Set input/output for display in LangSmith UI
+    if span_type == "llm" and "messages" in data:
+        # For LLM spans, use messages for input/output
+        input_msgs = [msg for msg in data["messages"] if msg.get("role") in ("user", "system")]
+        output_msgs = [msg for msg in data["messages"] if msg.get("role") == "assistant"]
+
+        if input_msgs:
+            span.set_attribute("input.value", json.dumps(input_msgs))
+        if output_msgs:
+            span.set_attribute("output.value", json.dumps(output_msgs))
+
+    elif span_type == "tool":
+        # For tool spans, use input/output from data
+        if "input" in data:
+            span.set_attribute("input.value", data["input"])
+        if "output" in data:
+            span.set_attribute("output.value", data["output"])

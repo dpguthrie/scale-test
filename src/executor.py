@@ -290,16 +290,18 @@ class ScaleTestExecutor:
                 # Use generic user query for input
                 user_query = f"Execute {scenario.name} workflow"
 
-                # Platform-specific attributes
-                if self.platform:
-                    # Braintrust: use braintrust.input/output for direct field mapping
-                    root_span.set_attribute("braintrust.input", user_query)
-                    # Braintrust: explicitly set span type to "task" (not "llm")
-                    root_span.set_attribute("braintrust.span_attributes.type", "task")
+                # Set input/output attributes for both platforms (collector will forward to both)
+                # Braintrust attributes
+                root_span.set_attribute("braintrust.input", user_query)
+                root_span.set_attribute("braintrust.span_attributes.type", "task")
 
-                    # LangSmith: set span kind to chain (task/workflow)
-                    if hasattr(self.platform, '__class__') and 'LangSmith' in self.platform.__class__.__name__:
-                        root_span.set_attribute("langsmith.span.kind", "chain")
+                # LangSmith attributes
+                root_span.set_attribute("langsmith.span.kind", "chain")
+                root_span.set_attribute("input.value", user_query)
+
+                # Add metadata with LangSmith prefix for metadata display
+                for key, value in trace_metadata.items():
+                    root_span.set_attribute(f"langsmith.metadata.{key}", value)
 
                 # Execute workflow steps
                 for step in scenario.workflow_steps:
@@ -308,8 +310,9 @@ class ScaleTestExecutor:
                 # Set output after workflow completes
                 workflow_output = f"Completed {scenario.name} with {len(scenario.workflow_steps)} steps"
 
-                if self.platform:
-                    root_span.set_attribute("braintrust.output", workflow_output)
+                # Set output for both platforms
+                root_span.set_attribute("braintrust.output", workflow_output)
+                root_span.set_attribute("output.value", workflow_output)
 
                 # Estimate data size (rough approximation)
                 data_size = scenario.expected_size_kb * 1024
