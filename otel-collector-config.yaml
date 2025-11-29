@@ -62,16 +62,16 @@ exporters:
 service:
   pipelines:
     # Enable ONLY ONE platform at a time
-    traces/braintrust:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlphttp/braintrust]
-
-    # Uncomment for LangSmith (and comment out Braintrust above)
-    # traces/langsmith:
+    # traces/braintrust:
     #   receivers: [otlp]
     #   processors: [memory_limiter, batch]
-    #   exporters: [otlphttp/langsmith]
+    #   exporters: [otlphttp/braintrust]
+
+    # Uncomment for LangSmith (and comment out Braintrust above)
+    traces/langsmith:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/langsmith]
 
     # traces/debug:
     #   receivers: [otlp]

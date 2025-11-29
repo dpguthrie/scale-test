@@ -12,9 +12,10 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from src.scenarios import TraceScenario, get_scenario
-from src.platforms import get_platform, Platform
+from src.platforms import get_platform
 from src.metrics import MetricsCollector
-from src.metadata import generate_trace_metadata, add_metadata_to_span
+from src.metadata import generate_trace_metadata
+from src.span_attributes import set_io_attributes, set_span_type_attributes, set_metadata_attributes
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -284,24 +285,16 @@ class ScaleTestExecutor:
 
                 # Add realistic trace-level metadata for filtering
                 trace_metadata = generate_trace_metadata()
-                add_metadata_to_span(root_span, trace_metadata)
 
-                # Set input/output for root span to appear in UI tables
-                # Use generic user query for input
+                # Set input for root span
                 user_query = f"Execute {scenario.name} workflow"
+                set_io_attributes(root_span, input_value=user_query)
 
-                # Set input/output attributes for both platforms (collector will forward to both)
-                # Braintrust attributes
-                root_span.set_attribute("braintrust.input", user_query)
-                root_span.set_attribute("braintrust.span_attributes.type", "task")
+                # Set span type and kind
+                set_span_type_attributes(root_span, span_type="task", span_kind="chain")
 
-                # LangSmith attributes
-                root_span.set_attribute("langsmith.span.kind", "chain")
-                root_span.set_attribute("input.value", user_query)
-
-                # Add metadata with LangSmith prefix for metadata display
-                for key, value in trace_metadata.items():
-                    root_span.set_attribute(f"langsmith.metadata.{key}", value)
+                # Set metadata (both raw attributes and platform-prefixed)
+                set_metadata_attributes(root_span, trace_metadata)
 
                 # Execute workflow steps
                 for step in scenario.workflow_steps:
@@ -309,10 +302,7 @@ class ScaleTestExecutor:
 
                 # Set output after workflow completes
                 workflow_output = f"Completed {scenario.name} with {len(scenario.workflow_steps)} steps"
-
-                # Set output for both platforms
-                root_span.set_attribute("braintrust.output", workflow_output)
-                root_span.set_attribute("output.value", workflow_output)
+                set_io_attributes(root_span, output_value=workflow_output)
 
                 # Estimate data size (rough approximation)
                 data_size = scenario.expected_size_kb * 1024

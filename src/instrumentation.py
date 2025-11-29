@@ -10,9 +10,9 @@ from src.platforms import Platform, BraintrustPlatform, LangSmithPlatform
 from src.metadata import (
     generate_llm_metadata,
     generate_tool_metadata,
-    generate_agent_metadata,
-    add_metadata_to_span
+    generate_agent_metadata
 )
+from src.span_attributes import set_metadata_attributes
 
 
 async def create_llm_span(
@@ -82,12 +82,7 @@ async def create_llm_span(
 
         # Add realistic metadata for filtering/analytics
         llm_metadata = generate_llm_metadata(model)
-        add_metadata_to_span(span, llm_metadata)
-
-        # Add LangSmith metadata prefix for metadata display
-        for key, value in llm_metadata.items():
-            if isinstance(value, (bool, int, float, str)):
-                span.set_attribute(f"langsmith.metadata.{key}", value)
+        set_metadata_attributes(span, llm_metadata)
 
         # Platform-specific attributes
         if platform:
@@ -143,12 +138,7 @@ async def create_tool_span(
 
         # Add realistic metadata for filtering/analytics
         tool_metadata = generate_tool_metadata(name)
-        add_metadata_to_span(span, tool_metadata)
-
-        # Add LangSmith metadata prefix for metadata display
-        for key, value in tool_metadata.items():
-            if isinstance(value, (bool, int, float, str)):
-                span.set_attribute(f"langsmith.metadata.{key}", value)
+        set_metadata_attributes(span, tool_metadata)
 
         # Platform-specific attributes
         if platform:
@@ -188,12 +178,7 @@ def create_agent_span(
 
         # Add realistic metadata for filtering/analytics
         agent_metadata = generate_agent_metadata(agent_type)
-        add_metadata_to_span(span, agent_metadata)
-
-        # Add LangSmith metadata prefix for metadata display
-        for key, value in agent_metadata.items():
-            if isinstance(value, (bool, int, float, str)):
-                span.set_attribute(f"langsmith.metadata.{key}", value)
+        set_metadata_attributes(span, agent_metadata)
 
         # Platform-specific attributes
         if platform:
