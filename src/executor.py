@@ -310,12 +310,17 @@ class ScaleTestExecutor:
                 # Create message accumulator for collecting all LLM messages
                 messages_accumulator = []
 
-                # Execute workflow steps (pass scenario name and accumulator to steps)
+                # Execute workflow steps (pass scenario name, accumulator, and user query to steps)
+                is_first_llm_step = True
                 for step in scenario.workflow_steps:
                     # Set scenario name on step for context
                     step._scenario_name = scenario.name
                     # Set message accumulator on step for collecting messages
                     step._messages_accumulator = messages_accumulator
+                    # Pass user query to first LLM step only
+                    if is_first_llm_step and hasattr(step, 'tokens_in'):  # LLMStep has tokens_in
+                        step._user_query = user_query
+                        is_first_llm_step = False
                     await step.execute(self.tracer, None, self.platform)
 
                 # Set output as accumulated messages if any were collected

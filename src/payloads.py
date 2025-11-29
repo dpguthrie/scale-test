@@ -692,7 +692,8 @@ def generate_thinking_block(scenario_context: str, target_tokens: int) -> Dict[s
 
     return {
         "type": "thinking",
-        "thinking": thinking_text[:target_chars].strip()
+        "thinking": thinking_text[:target_chars].strip(),
+        "signature": ""  # Required by Anthropic schema, can be empty string
     }
 
 

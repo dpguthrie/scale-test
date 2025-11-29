@@ -61,14 +61,14 @@ class LLMStep(WorkflowStep):
             target_tokens_out=self.tokens_out
         )
 
-        # Build full conversation with user message first
-        from src.payloads import generate_user_query
-        user_query = generate_user_query(scenario_name)
-
-        # Full conversation: user message + assistant response
-        messages = [
-            {"role": "user", "content": user_query}
-        ] + assistant_messages
+        # Check if this is the first LLM step (has user query)
+        user_query = getattr(self, '_user_query', None)
+        if user_query:
+            # First LLM step: include user message in input for thread view
+            messages = [{"role": "user", "content": user_query}] + assistant_messages
+        else:
+            # Subsequent LLM steps: just show assistant's response
+            messages = assistant_messages
 
         # Collect messages in accumulator if available
         messages_accumulator = getattr(self, '_messages_accumulator', None)
