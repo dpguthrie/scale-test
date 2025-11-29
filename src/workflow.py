@@ -10,7 +10,7 @@ from opentelemetry.trace import Span
 
 from src.instrumentation import create_llm_span, create_tool_span, create_agent_span, set_platform_attributes
 from src.payloads import (
-    generate_llm_messages,
+    generate_anthropic_messages,
     generate_flight_search_results,
     generate_hotel_search_results,
     generate_tool_result
@@ -50,12 +50,30 @@ class LLMStep(WorkflowStep):
 
     async def execute(self, tracer, parent_span_context, platform: Optional[Platform] = None):
         """Execute LLM step and create span"""
-        # Generate realistic messages
-        messages = generate_llm_messages(
-            user_prompt="User request placeholder",
-            assistant_response="Assistant response placeholder",
-            target_size_kb=self.tokens_out // 100  # Rough estimate
+        # Get scenario name from parent context (if available)
+        scenario_name = getattr(self, '_scenario_name', 'unknown')
+
+        # Generate realistic messages with Anthropic format
+        # This returns only assistant messages
+        assistant_messages = generate_anthropic_messages(
+            scenario_name=scenario_name,
+            span_name=self.name,
+            target_tokens_out=self.tokens_out
         )
+
+        # Check if this is the first LLM step (has user query)
+        user_query = getattr(self, '_user_query', None)
+        if user_query:
+            # First LLM step: include user message in input for thread view
+            messages = [{"role": "user", "content": user_query}] + assistant_messages
+        else:
+            # Subsequent LLM steps: just show assistant's response
+            messages = assistant_messages
+
+        # Collect messages in accumulator if available
+        messages_accumulator = getattr(self, '_messages_accumulator', None)
+        if messages_accumulator is not None:
+            messages_accumulator.extend(assistant_messages)
 
         # Create span with platform-specific attributes
         await create_llm_span(
@@ -114,12 +132,21 @@ class DelegationStep(WorkflowStep):
 
     async def execute(self, tracer, parent_span_context, platform: Optional[Platform] = None):
         """Execute delegation step with nested sub-workflow"""
+        # Import at function level to avoid circular dependency
+        from src.payloads import generate_agent_plan, generate_agent_reflection
+        import json
+        import random
+
         # Create agent span for this assistant
         with tracer.start_as_current_span(self.name) as span:
             # Set agent attributes
             tools = [step.name for step in self.sub_workflow if isinstance(step, ToolStep)]
-            span.set_attribute("gen_ai.agent.tools", str(tools))
+            span.set_attribute("gen_ai.agent.tools", json.dumps(tools))
             span.set_attribute("agent.type", self.assistant_type)
+
+            # Add planning structure at start
+            plan = generate_agent_plan(self.assistant_type, tools)
+            span.set_attribute("agent.plan", json.dumps(plan))
 
             if platform:
                 set_platform_attributes(
@@ -130,8 +157,23 @@ class DelegationStep(WorkflowStep):
                 )
 
             # Execute sub-workflow steps
+            # Propagate messages_accumulator to sub-workflow steps
+            messages_accumulator = getattr(self, '_messages_accumulator', None)
             for step in self.sub_workflow:
+                if messages_accumulator is not None:
+                    step._messages_accumulator = messages_accumulator
                 await step.execute(tracer, context.get_current(), platform)
+
+            # Add reflection structure at end
+            results_count = len([s for s in self.sub_workflow if isinstance(s, ToolStep)])
+            filters_applied = [f"filter_{i}" for i in range(random.randint(2, 5))]
+            reflection = generate_agent_reflection(
+                self.assistant_type,
+                success=True,
+                results_count=results_count,
+                filters_applied=filters_applied
+            )
+            span.set_attribute("agent.reflection", json.dumps(reflection))
 
 
 @dataclass

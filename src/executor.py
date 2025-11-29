@@ -286,9 +286,20 @@ class ScaleTestExecutor:
                 # Add realistic trace-level metadata for filtering
                 trace_metadata = generate_trace_metadata()
 
-                # Set input for root span
-                user_query = f"Execute {scenario.name} workflow"
-                set_io_attributes(root_span, input_value=user_query)
+                # Set input as Anthropic message array with user query
+                import json
+                from src.payloads import generate_user_query
+                from src.platforms import BraintrustPlatform
+                user_query = generate_user_query(scenario.name)
+                input_messages = [{"role": "user", "content": user_query}]
+
+                # Set input attributes based on platform
+                # For Braintrust in OTLP mode, set the attribute directly
+                # Use input_json to indicate it should be parsed as JSON
+                root_span.set_attribute("braintrust.input_json", json.dumps(input_messages, separators=(',', ':')))
+
+                # Also set for other platforms via standard mapping
+                set_io_attributes(root_span, input_value=json.dumps(input_messages))
 
                 # Set span type and kind
                 set_span_type_attributes(root_span, span_type="task", span_kind="chain")
@@ -296,12 +307,34 @@ class ScaleTestExecutor:
                 # Set metadata (both raw attributes and platform-prefixed)
                 set_metadata_attributes(root_span, trace_metadata)
 
-                # Execute workflow steps
+                # Create message accumulator for collecting all LLM messages
+                messages_accumulator = []
+
+                # Execute workflow steps (pass scenario name, accumulator, and user query to steps)
+                is_first_llm_step = True
                 for step in scenario.workflow_steps:
+                    # Set scenario name on step for context
+                    step._scenario_name = scenario.name
+                    # Set message accumulator on step for collecting messages
+                    step._messages_accumulator = messages_accumulator
+                    # Pass user query to first LLM step only
+                    if is_first_llm_step and hasattr(step, 'tokens_in'):  # LLMStep has tokens_in
+                        step._user_query = user_query
+                        is_first_llm_step = False
                     await step.execute(self.tracer, None, self.platform)
 
-                # Set output after workflow completes
-                workflow_output = f"Completed {scenario.name} with {len(scenario.workflow_steps)} steps"
+                # Set output as accumulated messages if any were collected
+                if messages_accumulator:
+                    # Output is just the last assistant message
+                    last_assistant_message = messages_accumulator[-1] if messages_accumulator else {"role": "assistant", "content": "No response"}
+
+                    # For Braintrust, set the output directly as JSON string (will be parsed)
+                    # Use output_json to indicate it should be parsed as JSON
+                    root_span.set_attribute("braintrust.output_json", json.dumps(last_assistant_message, separators=(',', ':')))
+
+                    workflow_output = json.dumps(last_assistant_message)
+                else:
+                    workflow_output = f"Completed {scenario.name} with {len(scenario.workflow_steps)} steps"
                 set_io_attributes(root_span, output_value=workflow_output)
 
                 # Estimate data size (rough approximation)

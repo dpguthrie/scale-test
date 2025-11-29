@@ -8,10 +8,11 @@ receivers:
 
 processors:
   batch:
-    # Aggressive batching to handle high throughput
+    # Conservative batching to prevent 413 (payload too large) errors
+    # With large traces (270KB avg), smaller batches are needed
     timeout: 5s
-    send_batch_size: 100
-    send_batch_max_size: 1000
+    send_batch_size: 10      # Reduced from 100 to prevent payload size issues
+    send_batch_max_size: 20  # Reduced from 1000 to cap max payload size
 
   memory_limiter:
     # Prevent OOM - drop data if memory usage is too high
@@ -27,6 +28,7 @@ exporters:
     headers:
       Authorization: Bearer ${env:BRAINTRUST_API_KEY:-not-set}
       x-bt-parent: project_name:${env:BRAINTRUST_PROJECT:-scale-test}
+    compression: gzip  # Enable compression to reduce payload size
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -43,6 +45,7 @@ exporters:
     headers:
       x-api-key: ${env:LANGSMITH_API_KEY:-not-set}
       Langsmith-Project: ${env:LANGSMITH_PROJECT:-scale-test}
+    compression: gzip  # Enable compression to reduce payload size
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -62,16 +65,16 @@ exporters:
 service:
   pipelines:
     # Enable ONLY ONE platform at a time
-    # traces/braintrust:
-    #   receivers: [otlp]
-    #   processors: [memory_limiter, batch]
-    #   exporters: [otlphttp/braintrust]
-
-    # Uncomment for LangSmith (and comment out Braintrust above)
-    traces/langsmith:
+    traces/braintrust:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/langsmith]
+      exporters: [otlphttp/braintrust]
+
+    # Uncomment for LangSmith (and comment out Braintrust above)
+    # traces/langsmith:
+    #   receivers: [otlp]
+    #   processors: [memory_limiter, batch]
+    #   exporters: [otlphttp/langsmith]
 
     # traces/debug:
     #   receivers: [otlp]
