@@ -14,6 +14,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from src.scenarios import TraceScenario, get_scenario
 from src.platforms import get_platform, Platform
 from src.metrics import MetricsCollector
+from src.metadata import generate_trace_metadata, add_metadata_to_span
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -176,8 +177,16 @@ class ScaleTestExecutor:
         skip_shutdown = os.getenv("OTEL_SKIP_SHUTDOWN", "false").lower() == "true"
 
         if skip_shutdown:
-            logger.warning("OTEL_SKIP_SHUTDOWN=true - exiting without flushing remaining spans")
-            logger.warning(f"~{int(total_spans_estimate)} spans may not be exported")
+            # Detect if using collector (localhost endpoint)
+            endpoint = self.platform.endpoint or ""
+            using_collector = "localhost" in endpoint or "127.0.0.1" in endpoint
+
+            if using_collector:
+                logger.info("OTEL_SKIP_SHUTDOWN=true - exiting immediately (collector will continue exporting)")
+                logger.debug(f"~{int(total_spans_estimate)} spans sent to collector, export continues in background")
+            else:
+                logger.warning("OTEL_SKIP_SHUTDOWN=true - exiting without flushing remaining spans")
+                logger.warning(f"~{int(total_spans_estimate)} spans may not be exported (direct export mode)")
             return self.metrics.report()
 
         logger.info(f"Shutting down tracer provider to flush ~{int(total_spans_estimate)} spans...")
@@ -273,9 +282,34 @@ class ScaleTestExecutor:
                 root_span.set_attribute("scenario.expected_spans", scenario.expected_span_count)
                 root_span.set_attribute("span.kind", "server")  # Mark as entry point
 
+                # Add realistic trace-level metadata for filtering
+                trace_metadata = generate_trace_metadata()
+                add_metadata_to_span(root_span, trace_metadata)
+
+                # Set input/output for root span to appear in UI tables
+                # Use generic user query for input
+                user_query = f"Execute {scenario.name} workflow"
+
+                # Platform-specific attributes
+                if self.platform:
+                    # Braintrust: use braintrust.input/output for direct field mapping
+                    root_span.set_attribute("braintrust.input", user_query)
+                    # Braintrust: explicitly set span type to "task" (not "llm")
+                    root_span.set_attribute("braintrust.span_attributes.type", "task")
+
+                    # LangSmith: set span kind to chain (task/workflow)
+                    if hasattr(self.platform, '__class__') and 'LangSmith' in self.platform.__class__.__name__:
+                        root_span.set_attribute("langsmith.span.kind", "chain")
+
                 # Execute workflow steps
                 for step in scenario.workflow_steps:
                     await step.execute(self.tracer, None, self.platform)
+
+                # Set output after workflow completes
+                workflow_output = f"Completed {scenario.name} with {len(scenario.workflow_steps)} steps"
+
+                if self.platform:
+                    root_span.set_attribute("braintrust.output", workflow_output)
 
                 # Estimate data size (rough approximation)
                 data_size = scenario.expected_size_kb * 1024

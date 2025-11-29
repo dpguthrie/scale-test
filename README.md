@@ -204,8 +204,10 @@ OTEL_BSP_MAX_QUEUE_SIZE=8192         # Large queue for high concurrency
 #### Shutdown Behavior
 ```bash
 OTEL_SKIP_SHUTDOWN=false  # Wait for spans to export (direct mode)
-OTEL_SKIP_SHUTDOWN=true   # Exit immediately (collector mode)
+OTEL_SKIP_SHUTDOWN=true   # Exit immediately (recommended for collector mode)
 ```
+
+**Smart Detection:** When `OTEL_SKIP_SHUTDOWN=true`, the framework automatically detects if you're using a collector (localhost endpoint) and shows an INFO message instead of a warning, since spans are safely buffered in the collector.
 
 ### Understanding the Queue
 
@@ -257,6 +259,7 @@ LOG_LEVEL=DEBUG    # Detailed execution (every scenario, iteration)
 
 ### Monitoring Collector
 
+#### Real-time Logs
 ```bash
 # View real-time logs
 docker-compose logs -f otel-collector
@@ -270,6 +273,104 @@ docker-compose restart
 # Stop collector
 docker-compose down
 ```
+
+#### Drop Analysis
+
+After running tests, analyze dropped spans and platform rejections:
+
+```bash
+./scripts/analyze_collector_drops.sh
+```
+
+**Example Output:**
+```
+🔍 OpenTelemetry Collector Drop Analysis
+==========================================
+
+📉 Dropped Spans Summary:
+------------------------
+Total spans dropped: 1812
+
+🚫 Platform Rejection Breakdown:
+--------------------------------
+HTTP 413 (Payload Too Large):
+  Occurrences: 1
+  Spans dropped: 112
+
+HTTP 429 (Rate Limited):
+  Occurrences: 172
+  Spans dropped: 0
+
+HTTP 409 (Conflict):
+  Occurrences: 17
+  Spans dropped: 1700
+
+💡 Recommendations:
+⚠️  HTTP 413: Reduce OTEL_BSP_MAX_EXPORT_BATCH_SIZE in collector config
+```
+
+**What the metrics mean:**
+
+- **HTTP 413 (Payload Too Large)**: Batch size exceeds platform's limit (10MB for Braintrust)
+  - **Fix**: Reduce `max_export_batch_size` in `otel-collector-config.yaml` batch processor
+
+- **HTTP 429 (Rate Limited)**: Platform is rate limiting your requests
+  - **Fix**: Reduce test concurrency, increase retry intervals, or contact platform for higher limits
+  - **Note**: Retries usually succeed, so drops are rare unless sustained
+
+- **HTTP 503 (Service Unavailable)**: Platform temporarily unavailable
+  - **Fix**: Usually transient, retries handle it. If persistent, check platform status
+
+- **HTTP 409 (Conflict)**: Duplicate trace IDs or pipeline conflicts
+  - **Fix**: Ensure only ONE platform pipeline is active in collector config
+
+**Comparing Platform Ingestion:**
+
+To compare ingestion capabilities between Braintrust and LangSmith:
+
+1. Run identical test with Braintrust (enable only `traces/braintrust` pipeline)
+2. Run drop analysis and save results
+3. Switch to LangSmith (disable Braintrust, enable `traces/langsmith` pipeline)
+4. Restart collector: `docker-compose restart`
+5. Run identical test with LangSmith
+6. Run drop analysis and compare:
+   - Total spans dropped
+   - HTTP error distribution (413 vs 429 vs 503)
+   - Memory warnings
+   - Retry success rate
+
+#### Prometheus Metrics (Optional)
+
+The collector exposes Prometheus metrics on port 8888. To enable detailed telemetry, add this to `otel-collector-config.yaml`:
+
+```yaml
+service:
+  telemetry:
+    metrics:
+      level: detailed
+      address: :8888
+```
+
+Then query metrics:
+
+```bash
+# View all metrics
+curl http://localhost:8888/metrics
+
+# Filter for exporter metrics
+curl http://localhost:8888/metrics | grep exporter
+
+# Filter for span counts
+curl http://localhost:8888/metrics | grep spans
+```
+
+**Key metrics:**
+- `otelcol_exporter_sent_spans`: Successfully exported spans
+- `otelcol_exporter_send_failed_spans`: Failed span exports
+- `otelcol_processor_batch_batch_send_size`: Batch sizes being sent
+- `otelcol_processor_batch_timeout_trigger`: How often batches timeout
+
+**Note:** The drop analysis script (`analyze_collector_drops.sh`) provides more actionable insights than raw Prometheus metrics.
 
 ---
 
@@ -329,7 +430,8 @@ src/
 └── executor.py          # Async workload execution with rate limiting
 
 scripts/
-└── run_scale_test.py    # CLI entry point
+├── run_scale_test.py             # CLI entry point
+└── analyze_collector_drops.sh    # Collector drop analysis tool
 
 tests/
 └── test_*.py            # Comprehensive test suite
@@ -375,6 +477,30 @@ docker-compose up -d
 2. Restart collector: `docker-compose restart`
 3. Check collector logs: `docker-compose logs otel-collector`
 4. Look for "401 Unauthorized" or "429 Rate Limit" errors
+5. Run drop analysis: `./scripts/analyze_collector_drops.sh` to see if spans are being rejected
+
+### Collector dropping spans
+**Problem:** Collector logs show "Exporting failed. Dropping data" messages
+
+**Solution:**
+1. Run drop analysis to identify the root cause:
+   ```bash
+   ./scripts/analyze_collector_drops.sh
+   ```
+
+2. Address based on HTTP status code:
+   - **HTTP 413**: Batch size too large
+     - Reduce `max_export_batch_size` in `otel-collector-config.yaml` (try 50 or 10)
+   - **HTTP 429**: Rate limiting
+     - Reduce test concurrency (`SCALE_TEST_CONCURRENCY`)
+     - Increase batch schedule delay in collector config
+   - **HTTP 409**: Multiple pipelines active
+     - Ensure only ONE platform pipeline is uncommented in collector config
+     - Restart collector after changing config
+
+3. For persistent issues, check platform-specific limits:
+   - Braintrust: 10MB per batch, rate limits vary by plan
+   - LangSmith: Contact support for specific limits
 
 ### Collector errors on startup
 **Problem:** Collector crashes with config errors

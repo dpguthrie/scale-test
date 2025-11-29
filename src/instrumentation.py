@@ -7,6 +7,12 @@ from opentelemetry import trace
 from opentelemetry.trace import Span
 
 from src.platforms import Platform, BraintrustPlatform, LangSmithPlatform
+from src.metadata import (
+    generate_llm_metadata,
+    generate_tool_metadata,
+    generate_agent_metadata,
+    add_metadata_to_span
+)
 
 
 async def create_llm_span(
@@ -62,6 +68,22 @@ async def create_llm_span(
             span.set_attribute(f"gen_ai.prompt.{i}.role", msg["role"])
             span.set_attribute(f"gen_ai.prompt.{i}.content", msg["content"])
 
+        # Also set completion attributes for output
+        # Find assistant messages for output
+        assistant_messages = [msg for msg in messages if msg.get("role") == "assistant"]
+        if assistant_messages:
+            # Set single completion string (most recent assistant message)
+            span.set_attribute("gen_ai.completion", assistant_messages[-1]["content"])
+
+            # Set indexed completion format for all assistant messages
+            for i, msg in enumerate(assistant_messages):
+                span.set_attribute(f"gen_ai.completion.{i}.role", "assistant")
+                span.set_attribute(f"gen_ai.completion.{i}.content", msg["content"])
+
+        # Add realistic metadata for filtering/analytics
+        llm_metadata = generate_llm_metadata(model)
+        add_metadata_to_span(span, llm_metadata)
+
         # Platform-specific attributes
         if platform:
             set_platform_attributes(
@@ -106,13 +128,25 @@ async def create_tool_span(
         span.set_attribute("tool.result", result_json)
         span.set_attribute("tool.result.size", len(result_json))
 
+        # Set input/output for UI display
+        # Input is the tool invocation
+        tool_input = f"Execute tool: {name}"
+        span.set_attribute("gen_ai.prompt", tool_input)
+
+        # Output is the result
+        span.set_attribute("gen_ai.completion", result_json)
+
+        # Add realistic metadata for filtering/analytics
+        tool_metadata = generate_tool_metadata(name)
+        add_metadata_to_span(span, tool_metadata)
+
         # Platform-specific attributes
         if platform:
             set_platform_attributes(
                 span,
                 platform,
                 span_type="tool",
-                data={"tool": name, "result": tool_result}
+                data={"tool": name, "result": tool_result, "input": tool_input, "output": result_json}
             )
 
         return span
@@ -141,6 +175,10 @@ def create_agent_span(
         # Agent attributes
         span.set_attribute("gen_ai.agent.tools", json.dumps(available_tools))
         span.set_attribute("agent.type", agent_type)
+
+        # Add realistic metadata for filtering/analytics
+        agent_metadata = generate_agent_metadata(agent_type)
+        add_metadata_to_span(span, agent_metadata)
 
         # Platform-specific attributes
         if platform:
@@ -203,11 +241,23 @@ def _set_braintrust_attributes(span: Span, span_type: str, data: Dict[str, Any])
     """
     if span_type == "llm" and "messages" in data:
         # Use braintrust namespace for direct field mapping
-        span.set_attribute("braintrust.input_json", json.dumps(data["messages"]))
-        span.set_attribute("braintrust.output_json", json.dumps(data["messages"][-1:]))
+        # Input: all user/system messages
+        input_msgs = [msg for msg in data["messages"] if msg.get("role") in ("user", "system")]
+        # Output: assistant messages
+        output_msgs = [msg for msg in data["messages"] if msg.get("role") == "assistant"]
+
+        span.set_attribute("braintrust.input_json", json.dumps(input_msgs if input_msgs else data["messages"]))
+        span.set_attribute("braintrust.output_json", json.dumps(output_msgs if output_msgs else data["messages"][-1:]))
         span.set_attribute("braintrust.metadata", json.dumps({
             "model": data.get("model", "unknown")
         }))
+
+    elif span_type == "tool":
+        # For tools, use input/output from data
+        if "input" in data:
+            span.set_attribute("braintrust.input", data["input"])
+        if "output" in data:
+            span.set_attribute("braintrust.output", data["output"])
 
 
 def _set_langsmith_attributes(span: Span, span_type: str, data: Dict[str, Any]):
