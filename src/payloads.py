@@ -3,21 +3,53 @@
 import json
 import random
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-
-AIRPORTS = ["JFK", "LAX", "ORD", "SFO", "BOS", "DFW", "ATL", "MIA",
-            "LHR", "CDG", "FRA", "AMS", "ZRH", "BCN", "FCO"]
+AIRPORTS = [
+    "JFK",
+    "LAX",
+    "ORD",
+    "SFO",
+    "BOS",
+    "DFW",
+    "ATL",
+    "MIA",
+    "LHR",
+    "CDG",
+    "FRA",
+    "AMS",
+    "ZRH",
+    "BCN",
+    "FCO",
+]
 AIRLINES = ["AA", "UA", "DL", "BA", "LH", "AF", "KL", "LX"]
-HOTEL_NAMES = ["Grand Hotel", "City Inn", "Plaza Hotel", "Resort & Spa",
-               "Boutique Hotel", "Business Hotel", "Airport Hotel"]
-LOCATIONS = ["New York", "Los Angeles", "Chicago", "San Francisco",
-             "London", "Paris", "Frankfurt", "Zurich", "Barcelona"]
+HOTEL_NAMES = [
+    "Grand Hotel",
+    "City Inn",
+    "Plaza Hotel",
+    "Resort & Spa",
+    "Boutique Hotel",
+    "Business Hotel",
+    "Airport Hotel",
+]
+LOCATIONS = [
+    "New York",
+    "Los Angeles",
+    "Chicago",
+    "San Francisco",
+    "London",
+    "Paris",
+    "Frankfurt",
+    "Zurich",
+    "Barcelona",
+]
 PRICE_TIERS = ["Midscale", "Upper Midscale", "Upscale", "Luxury"]
 
 
-def generate_flight_search_results(count: int = 20, target_size_kb: int = 30) -> List[Dict]:
-    """Generate realistic flight search results matching expedia schema
+def generate_flight_search_results(
+    count: int = 20, target_size_kb: int = 30
+) -> List[Dict]:
+    """Generate realistic flight search results
 
     Args:
         count: Number of flight results to generate
@@ -56,7 +88,9 @@ def generate_flight_search_results(count: int = 20, target_size_kb: int = 30) ->
     return flights
 
 
-def generate_hotel_search_results(count: int = 10, target_size_kb: int = 40) -> List[Dict]:
+def generate_hotel_search_results(
+    count: int = 10, target_size_kb: int = 40
+) -> List[Dict]:
     """Generate realistic hotel search results
 
     Args:
@@ -78,7 +112,7 @@ def generate_hotel_search_results(count: int = 10, target_size_kb: int = 40) -> 
             "rating": round(random.uniform(3.0, 5.0), 1),
             "amenities": random.sample(
                 ["WiFi", "Pool", "Gym", "Spa", "Restaurant", "Bar", "Parking"],
-                k=random.randint(3, 7)
+                k=random.randint(3, 7),
             ),
             "available_rooms": random.randint(0, 20),
         }
@@ -95,9 +129,7 @@ def generate_hotel_search_results(count: int = 10, target_size_kb: int = 40) -> 
 
 
 def generate_llm_messages(
-    user_prompt: str,
-    assistant_response: str,
-    target_size_kb: int = 10
+    user_prompt: str, assistant_response: str, target_size_kb: int = 10
 ) -> List[Dict[str, str]]:
     """Generate LLM message array in chat format
 
@@ -111,7 +143,7 @@ def generate_llm_messages(
     """
     messages = [
         {"role": "user", "content": user_prompt},
-        {"role": "assistant", "content": assistant_response}
+        {"role": "assistant", "content": assistant_response},
     ]
 
     # Pad assistant response to reach target size
@@ -127,7 +159,7 @@ def generate_tool_result(
     tool_name: str,
     success: bool = True,
     data: Dict[str, Any] = None,
-    target_size_kb: int = 5
+    target_size_kb: int = 5,
 ) -> Dict[str, Any]:
     """Generate a tool execution result
 
@@ -166,4 +198,4 @@ def estimate_json_size_kb(obj: Any) -> float:
         Estimated size in KB
     """
     json_str = json.dumps(obj)
-    return len(json_str.encode('utf-8')) / 1024
+    return len(json_str.encode("utf-8")) / 1024

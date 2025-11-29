@@ -2,6 +2,7 @@
 """Main CLI script for running scale tests"""
 
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -11,6 +12,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from src.executor import ScaleTestExecutor
+
+# Setup logging
+def setup_logging():
+    """Configure logging based on LOG_LEVEL environment variable"""
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 
 def load_config_from_env() -> dict:
@@ -58,10 +69,16 @@ def load_config_from_env() -> dict:
             elif "Langsmith-Project" in part:
                 project_name = part.split("=", 1)[1].strip()
 
+        # Get endpoint from env var (defaults to https://api.smith.langchain.com/otel in Platform class)
+        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
         platform_config.update({
             "api_key": api_key,
             "project_name": project_name
         })
+
+        if endpoint:
+            platform_config["endpoint_url"] = endpoint
 
     elif platform == "otlp":
         platform_config.update({
@@ -105,6 +122,9 @@ async def main():
     """Main entry point"""
     # Load environment variables
     load_dotenv()
+
+    # Setup logging
+    setup_logging()
 
     # Load configuration
     config = load_config_from_env()

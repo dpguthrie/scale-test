@@ -27,7 +27,8 @@ def test_langsmith_platform_configuration():
         api_key="test-key",
         project_name="test-project"
     )
-    assert platform.endpoint == "https://api.smith.langchain.com/otel"
+    # Endpoint should include /v1/traces for OTLPSpanExporter
+    assert platform.endpoint == "https://api.smith.langchain.com/otel/v1/traces"
     headers = platform.get_headers()
     assert headers["x-api-key"] == "test-key"
     assert headers["Langsmith-Project"] == "test-project"

@@ -1,0 +1,85 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    # Aggressive batching to handle high throughput
+    timeout: 5s
+    send_batch_size: 100
+    send_batch_max_size: 1000
+
+  memory_limiter:
+    # Prevent OOM - drop data if memory usage is too high
+    # Increased for high-scale testing
+    check_interval: 1s
+    limit_mib: 2048     # 2GB limit (increased from 512MB)
+    spike_limit_mib: 512 # 512MB spike (increased from 128MB)
+
+exporters:
+  # Braintrust exporter
+  otlphttp/braintrust:
+    endpoint: https://api.braintrust.dev/otel
+    headers:
+      Authorization: Bearer ${env:BRAINTRUST_API_KEY:-not-set}
+      x-bt-parent: project_name:${env:BRAINTRUST_PROJECT:-scale-test}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
+  # LangSmith exporter
+  otlphttp/langsmith:
+    endpoint: https://api.smith.langchain.com/otel
+    headers:
+      x-api-key: ${env:LANGSMITH_API_KEY:-not-set}
+      Langsmith-Project: ${env:LANGSMITH_PROJECT:-scale-test}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
+  # Debug exporter (logs to console)
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    # Enable ONLY ONE platform at a time
+    traces/braintrust:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/braintrust]
+
+    # Uncomment for LangSmith (and comment out Braintrust above)
+    # traces/langsmith:
+    #   receivers: [otlp]
+    #   processors: [memory_limiter, batch]
+    #   exporters: [otlphttp/langsmith]
+
+    # traces/debug:
+    #   receivers: [otlp]
+    #   processors: [memory_limiter, batch]
+    #   exporters: [debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed

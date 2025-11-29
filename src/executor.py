@@ -1,6 +1,7 @@
 """Async workload executor for scale testing"""
 
 import asyncio
+import logging
 import random
 import time
 from typing import Dict, List, Optional
@@ -13,6 +14,9 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from src.scenarios import TraceScenario, get_scenario
 from src.platforms import get_platform, Platform
 from src.metrics import MetricsCollector
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 
 class TokenBucketRateLimiter:
@@ -94,7 +98,19 @@ class ScaleTestExecutor:
         self.should_stop = False
 
     def _setup_tracer(self) -> TracerProvider:
-        """Setup OpenTelemetry tracer with platform exporter"""
+        """Setup OpenTelemetry tracer with platform exporter
+
+        Configuration can be tuned via environment variables:
+        - OTEL_BSP_SCHEDULE_DELAY: Milliseconds between exports (default: 5000)
+        - OTEL_BSP_MAX_EXPORT_BATCH_SIZE: Max spans per batch (default: 10 for 10MB limit)
+        - OTEL_BSP_MAX_QUEUE_SIZE: Max queued spans (default: 4096, increased for high concurrency)
+        - OTEL_BSP_EXPORT_TIMEOUT: Export timeout in milliseconds (default: 120000)
+
+        Note: Queue fills when spans are created faster than exported. Increase MAX_QUEUE_SIZE
+        or reduce SCHEDULE_DELAY to prevent "Queue is full, likely spans will be dropped" warnings.
+        """
+        import os
+
         provider = TracerProvider()
 
         # Setup exporter based on platform
@@ -102,9 +118,16 @@ class ScaleTestExecutor:
             exporter = OTLPSpanExporter(
                 endpoint=self.platform.endpoint,
                 headers=self.platform.get_headers(),
-                timeout=120  # 120 second timeout for large payloads
+                timeout=int(os.getenv("OTEL_BSP_EXPORT_TIMEOUT", "120000")) / 1000
             )
-            processor = BatchSpanProcessor(exporter)
+            # BatchSpanProcessor with configurable settings
+            # Defaults tuned for high-concurrency scale testing with large traces (500KB)
+            processor = BatchSpanProcessor(
+                exporter,
+                max_export_batch_size=int(os.getenv("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "10")),
+                schedule_delay_millis=int(os.getenv("OTEL_BSP_SCHEDULE_DELAY", "5000")),
+                max_queue_size=int(os.getenv("OTEL_BSP_MAX_QUEUE_SIZE", "4096")),  # Increased from 2048
+            )
             provider.add_span_processor(processor)
 
         trace.set_tracer_provider(provider)
@@ -119,10 +142,14 @@ class ScaleTestExecutor:
         Returns:
             Metrics report dictionary
         """
+        logger.info(f"Starting scale test: {self.concurrency} workers, {duration_seconds}s duration")
         print(f"Starting scale test: {self.concurrency} workers, {duration_seconds}s duration")
 
         # Schedule stop
         asyncio.create_task(self._stop_after(duration_seconds))
+
+        # Schedule periodic progress reporting
+        asyncio.create_task(self._progress_reporter(duration_seconds))
 
         # Start workers
         workers = [
@@ -130,18 +157,71 @@ class ScaleTestExecutor:
             for worker_id in range(self.concurrency)
         ]
 
+        logger.info(f"Started {len(workers)} worker tasks")
+
         # Wait for all workers to complete
+        logger.info("Waiting for workers to complete...")
         await asyncio.gather(*workers)
+        logger.info("All workers completed")
+
+        # Get metrics before shutdown
+        total_requests = self.metrics.success_count + self.metrics.failure_count
+        total_spans_estimate = sum(
+            scenario.expected_span_count
+            for scenario in self.scenarios
+        ) * total_requests / len(self.scenarios) if len(self.scenarios) > 0 else 0
 
         # Shutdown tracer provider to flush remaining spans
-        self.tracer_provider.shutdown()
+        import os
+        skip_shutdown = os.getenv("OTEL_SKIP_SHUTDOWN", "false").lower() == "true"
+
+        if skip_shutdown:
+            logger.warning("OTEL_SKIP_SHUTDOWN=true - exiting without flushing remaining spans")
+            logger.warning(f"~{int(total_spans_estimate)} spans may not be exported")
+            return self.metrics.report()
+
+        logger.info(f"Shutting down tracer provider to flush ~{int(total_spans_estimate)} spans...")
+        logger.info(f"This may take a while with {total_requests} traces...")
+        logger.info("Set OTEL_SKIP_SHUTDOWN=true to exit immediately without waiting")
+
+        # Run shutdown in thread pool to avoid blocking event loop indefinitely
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            try:
+                # Give it a generous timeout (30s per 1000 spans, min 30s, max 300s)
+                timeout_seconds = max(30, min(300, int(total_spans_estimate / 1000 * 30)))
+                logger.info(f"Shutdown timeout set to {timeout_seconds}s")
+
+                future = executor.submit(self.tracer_provider.shutdown)
+                future.result(timeout=timeout_seconds)
+                logger.info("Tracer provider shutdown complete")
+            except concurrent.futures.TimeoutError:
+                logger.warning(f"Tracer shutdown timed out after {timeout_seconds}s - some spans may not be exported")
+                logger.warning("Consider: reducing SCALE_TEST_DURATION, increasing OTEL_BSP_SCHEDULE_DELAY, or reducing OTEL_BSP_MAX_QUEUE_SIZE")
+                logger.warning("Or use OTEL_SKIP_SHUTDOWN=true to exit immediately")
 
         return self.metrics.report()
 
     async def _stop_after(self, seconds: float):
         """Stop execution after specified time"""
         await asyncio.sleep(seconds)
+        logger.info(f"Duration {seconds}s elapsed, stopping workers...")
         self.should_stop = True
+
+    async def _progress_reporter(self, total_duration: float):
+        """Report progress every 10 seconds"""
+        start_time = time.time()
+        report_interval = 10  # seconds
+
+        while not self.should_stop:
+            await asyncio.sleep(report_interval)
+
+            if not self.should_stop:
+                elapsed = time.time() - start_time
+                requests_so_far = self.metrics.success_count + self.metrics.failure_count
+                rate = requests_so_far / elapsed if elapsed > 0 else 0
+
+                logger.info(f"Progress: {int(elapsed)}s/{int(total_duration)}s | {requests_so_far} traces | {rate:.1f} req/s")
 
     async def _worker(self, worker_id: int):
         """Worker coroutine that executes scenarios
@@ -152,9 +232,15 @@ class ScaleTestExecutor:
         # Gradual ramp-up: stagger worker starts
         if self.ramp_up_seconds > 0:
             delay = (worker_id / self.concurrency) * self.ramp_up_seconds
+            logger.debug(f"Worker {worker_id}: Delaying start by {delay:.1f}s for ramp-up")
             await asyncio.sleep(delay)
 
+        logger.info(f"Worker {worker_id}: Starting execution loop")
+        iteration = 0
+
         while not self.should_stop:
+            iteration += 1
+
             # Rate limiting
             if self.rate_limiter:
                 await self.rate_limiter.acquire()
@@ -162,8 +248,12 @@ class ScaleTestExecutor:
             # Select scenario based on weights
             scenario = random.choices(self.scenarios, weights=self.weights)[0]
 
+            logger.debug(f"Worker {worker_id}: Iteration {iteration}, executing {scenario.name}")
+
             # Execute scenario
             await self._execute_scenario(scenario)
+
+        logger.info(f"Worker {worker_id}: Completed {iteration} iterations, stopping")
 
     async def _execute_scenario(self, scenario: TraceScenario):
         """Execute a single scenario and collect metrics
@@ -175,10 +265,13 @@ class ScaleTestExecutor:
         data_size = 0
 
         try:
+            logger.debug(f"Starting scenario: {scenario.name} ({scenario.expected_span_count} spans expected)")
+
             # Create root span for trace (required for Braintrust)
             with self.tracer.start_as_current_span(f"trace_{scenario.name}") as root_span:
                 root_span.set_attribute("scenario.name", scenario.name)
                 root_span.set_attribute("scenario.expected_spans", scenario.expected_span_count)
+                root_span.set_attribute("span.kind", "server")  # Mark as entry point
 
                 # Execute workflow steps
                 for step in scenario.workflow_steps:
@@ -189,6 +282,7 @@ class ScaleTestExecutor:
 
             # Record success
             latency_ms = (time.time() - start_time) * 1000
+            logger.debug(f"Scenario {scenario.name} completed in {latency_ms:.1f}ms")
             self.metrics.record_success(
                 scenario_name=scenario.name,
                 latency_ms=latency_ms,
@@ -197,6 +291,7 @@ class ScaleTestExecutor:
 
         except Exception as e:
             # Record failure
+            logger.error(f"Scenario {scenario.name} failed: {e}", exc_info=True)
             self.metrics.record_failure(
                 scenario_name=scenario.name,
                 error=str(e)

@@ -42,6 +42,9 @@ class BraintrustPlatform(Platform):
 
     @property
     def endpoint(self) -> str:
+        # OTLPSpanExporter requires the full path including /v1/traces
+        if not self.endpoint_url.endswith("/v1/traces"):
+            return f"{self.endpoint_url}/v1/traces"
         return self.endpoint_url
 
     def get_headers(self) -> Dict[str, str]:
@@ -76,8 +79,14 @@ class LangSmithPlatform(Platform):
     @property
     def endpoint(self) -> str:
         if self.region == "eu":
-            return "https://eu.api.smith.langchain.com/otel"
-        return self.endpoint_url
+            base = "https://eu.api.smith.langchain.com/otel"
+        else:
+            base = self.endpoint_url
+
+        # OTLPSpanExporter requires the full path including /v1/traces
+        if not base.endswith("/v1/traces"):
+            return f"{base}/v1/traces"
+        return base
 
     def get_headers(self) -> Dict[str, str]:
         return {
